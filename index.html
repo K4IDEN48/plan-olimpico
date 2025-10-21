@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#003d82">
+    <meta name="description" content="Sistema de entrenamiento atlético - Camino a JJ.OO.">
+    <title>Plan Olímpico - Entrenamiento Atlético</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏃</text></svg>">
+</head>
+<body>
+    <div id="app">
+        <!-- HEADER -->
+        <header class="header">
+            <div class="container">
+                <div class="header-content">
+                    <h1 class="logo">🏃 PLAN OLÍMPICO</h1>
+                    <div class="header-actions">
+                        <button id="themeToggle" class="btn-icon" title="Cambiar tema">🌓</button>
+                        <button id="exportData" class="btn-icon" title="Exportar datos">📥</button>
+                        <button id="menuToggle" class="btn-icon" title="Menú">☰</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- NAVIGATION -->
+        <nav class="nav" id="mainNav">
+            <div class="container">
+                <div class="nav-links">
+                    <a href="#dashboard" class="nav-link active" data-view="dashboard">📊 Dashboard</a>
+                    <a href="#entrenamientos" class="nav-link" data-view="entrenamientos">🏃 Entrenamientos</a>
+                    <a href="#monitoreo" class="nav-link" data-view="monitoreo">📈 Monitoreo</a>
+                    <a href="#biblioteca" class="nav-link" data-view="biblioteca">📚 Biblioteca</a>
+                    <a href="#nutricion" class="nav-link" data-view="nutricion">🍽️ Nutrición</a>
+                    <a href="#analisis" class="nav-link" data-view="analisis">📊 Análisis</a>
+                </div>
+            </div>
+        </nav>
+
+        <!-- MAIN CONTENT -->
+        <main class="main">
+            <div class="container">
+                <!-- DASHBOARD VIEW -->
+                <section id="view-dashboard" class="view active">
+                    <div class="hero-card">
+                        <h2>Camino a San Silvestre 🏅</h2>
+                        <div class="countdown" id="countdown">
+                            <div class="countdown-item">
+                                <span class="countdown-number" id="days">73</span>
+                                <span class="countdown-label">Días</span>
+                            </div>
+                            <div class="countdown-item">
+                                <span class="countdown-number" id="hours">00</span>
+                                <span class="countdown-label">Horas</span>
+                            </div>
+                            <div class="countdown-item">
+                                <span class="countdown-number" id="minutes">00</span>
+                                <span class="countdown-label">Minutos</span>
+                            </div>
+                        </div>
+                        <div class="goal">
+                            <span class="goal-label">Objetivo:</span>
+                            <span class="goal-time">38:00</span>
+                            <span class="goal-pace">(3:48/km)</span>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">📅</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Semana Actual</div>
+                                <div class="stat-value" id="currentWeek">1 / 11</div>
+                                <div class="stat-subtitle" id="weekType">Carga Ligera</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">🏃</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Esta Semana</div>
+                                <div class="stat-value" id="weekKm">0 / 28 km</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="weekProgress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card" id="healthCard">
+                            <div class="stat-icon">💚</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Estado</div>
+                                <div class="stat-value">ÓPTIMO</div>
+                                <div class="stat-details">
+                                    <span id="fcStatus">FC: -- lpm</span>
+                                    <span id="sleepStatus">Sueño: --h</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>🏃 Entrenamiento de Hoy</h3>
+                        <div id="todayWorkout">
+                            <div class="workout-today">
+                                <div class="workout-info">
+                                    <div class="workout-type">4K suave</div>
+                                    <div class="workout-details">Ritmo: 5:30-6:00/km</div>
+                                    <div class="workout-focus">Técnica de carrera y adaptación</div>
+                                </div>
+                                <button class="btn btn-primary" onclick="startWorkout()">Iniciar Entreno</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Progreso Semanal</h3>
+                        <canvas id="weeklyChart" width="400" height="200"></canvas>
+                    </div>
+
+                    <div class="card">
+                        <h3>✅ Hábitos de Hoy</h3>
+                        <div class="habits-grid" id="habitsToday">
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="monitoreo">
+                                <span>Monitoreo matutino</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="entrenamiento">
+                                <span>Entrenamiento</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="calentamiento">
+                                <span>Calentamiento pre</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="enfriamiento">
+                                <span>Enfriamiento post</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="estiramientos">
+                                <span>Estiramientos</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="rodillo">
+                                <span>Rodillo de espuma</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="estudio">
+                                <span>2h Estudio</span>
+                            </label>
+                            <label class="habit-item">
+                                <input type="checkbox" data-habit="sueno">
+                                <span>8h Sueño</span>
+                            </label>
+                        </div>
+                        <div class="habit-score">
+                            <span>Adherencia hoy:</span>
+                            <strong id="todayScore">0%</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ENTRENAMIENTOS VIEW -->
+                <section id="view-entrenamientos" class="view">
+                    <div class="section-header">
+                        <h2>🏃 Plan de Entrenamientos</h2>
+                        <button class="btn btn-secondary" onclick="showAddWorkout()">+ Registrar Entreno</button>
+                    </div>
+
+                    <div class="filters">
+                        <select id="weekFilter" class="select">
+                            <option value="all">Todas las semanas</option>
+                            <option value="1">Semana 1</option>
+                            <option value="2">Semana 2</option>
+                            <option value="3">Semana 3</option>
+                            <option value="4">Semana 4</option>
+                            <option value="5">Semana 5</option>
+                            <option value="6">Semana 6</option>
+                            <option value="7">Semana 7</option>
+                            <option value="8">Semana 8</option>
+                            <option value="9">Semana 9</option>
+                            <option value="10">Semana 10</option>
+                            <option value="11">Semana 11</option>
+                        </select>
+                    </div>
+
+                    <div id="workoutsCalendar" class="calendar-grid">
+                        <!-- Generado dinámicamente -->
+                    </div>
+                </section>
+
+                <!-- MONITOREO VIEW -->
+                <section id="view-monitoreo" class="view">
+                    <div class="section-header">
+                        <h2>📈 Monitoreo Diario</h2>
+                    </div>
+
+                    <div class="card">
+                        <h3>Registro Matutino de Hoy</h3>
+                        <form id="morningForm" class="form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>FC en Reposo (lpm)</label>
+                                    <input type="number" id="fcReposo" placeholder="52" min="30" max="100">
+                                </div>
+                                <div class="form-group">
+                                    <label>Peso (kg)</label>
+                                    <input type="number" id="peso" placeholder="65.0" step="0.1" min="40" max="120">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Horas de Sueño</label>
+                                    <input type="number" id="horasSueno" placeholder="8.0" step="0.5" min="0" max="16">
+                                </div>
+                                <div class="form-group">
+                                    <label>Calidad Sueño (1-10)</label>
+                                    <input type="number" id="calidadSueno" placeholder="8" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Nivel Dolor Muscular (0-10)</label>
+                                    <input type="number" id="nivelDolor" placeholder="0" min="0" max="10">
+                                </div>
+                                <div class="form-group">
+                                    <label>Estado de Ánimo (1-10)</label>
+                                    <input type="number" id="estadoAnimo" placeholder="8" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Zonas con Molestia</label>
+                                <div class="checkbox-group">
+                                    <label><input type="checkbox" value="aquiles"> Aquiles</label>
+                                    <label><input type="checkbox" value="rodilla"> Rodilla</label>
+                                    <label><input type="checkbox" value="banda-it"> Banda IT</label>
+                                    <label><input type="checkbox" value="espinilla"> Espinilla</label>
+                                    <label><input type="checkbox" value="pie"> Pie</label>
+                                    <label><input type="checkbox" value="ninguna"> Sin molestias</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Notas Adicionales</label>
+                                <textarea id="notasMonitoreo" rows="3" placeholder="Cualquier observación importante..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Guardar Monitoreo</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Tendencias (Últimos 7 días)</h3>
+                        <canvas id="monitoringChart" width="400" height="200"></canvas>
+                    </div>
+
+                    <div class="card">
+                        <h3>⚠️ Alertas Activas</h3>
+                        <div id="alertsList" class="alerts-list">
+                            <div class="alert-empty">No hay alertas. ¡Todo en orden! 💚</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- BIBLIOTECA VIEW -->
+                <section id="view-biblioteca" class="view">
+                    <div class="section-header">
+                        <h2>📚 Biblioteca de Ejercicios</h2>
+                    </div>
+
+                    <div class="biblioteca-nav">
+                        <button class="btn-tab active" data-tab="calentamiento">🔥 Calentamiento</button>
+                        <button class="btn-tab" data-tab="drills">🏃 Drills Técnica</button>
+                        <button class="btn-tab" data-tab="estiramientos">🧘 Estiramientos</button>
+                        <button class="btn-tab" data-tab="core">💪 Core</button>
+                        <button class="btn-tab" data-tab="rodillo">🎯 Rodillo</button>
+                    </div>
+
+                    <div id="biblioteca-content">
+                        <!-- Contenido generado dinámicamente -->
+                    </div>
+                </section>
+
+                <!-- NUTRICION VIEW -->
+                <section id="view-nutricion" class="view">
+                    <div class="section-header">
+                        <h2>🍽️ Plan Nutricional</h2>
+                    </div>
+
+                    <div class="card">
+                        <h3>Calculadora de Calorías</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tu Peso (kg)</label>
+                                <input type="number" id="pesoCalc" placeholder="65" min="40" max="120">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Día</label>
+                                <select id="tipoDia" class="select">
+                                    <option value="intenso">Entrenamiento Intenso</option>
+                                    <option value="suave">Entrenamiento Suave</option>
+                                    <option value="descanso">Descanso</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" onclick="calcularCalorias()">Calcular</button>
+                        </div>
+                        <div id="caloriaResult" class="result-box"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Plan de Comidas TIPO - Día Intenso</h3>
+                        <div class="meal-plan">
+                            <div class="meal-item">
+                                <div class="meal-time">05:45 - Pre-entreno</div>
+                                <div class="meal-content">
+                                    <strong>1 plátano + café + 250ml agua</strong>
+                                    <p>~120 cal | 30g carbs</p>
+                                </div>
+                            </div>
+                            <div class="meal-item">
+                                <div class="meal-time">08:30 - Desayuno post-entreno</div>
+                                <div class="meal-content">
+                                    <strong>80g avena + plátano + miel + 2 huevos + tostada</strong>
+                                    <p>~650 cal | 80g carbs | 25g proteína</p>
+                                </div>
+                            </div>
+                            <div class="meal-item">
+                                <div class="meal-time">12:00 - Comida</div>
+                                <div class="meal-content">
+                                    <strong>200g pollo + 150g arroz integral + ensalada + aguacate</strong>
+                                    <p>~750 cal | 90g carbs | 50g proteína</p>
+                                </div>
+                            </div>
+                            <div class="meal-item">
+                                <div class="meal-time">15:30 - Snack</div>
+                                <div class="meal-content">
+                                    <strong>200g yogurt griego + 30g nueces + manzana</strong>
+                                    <p>~350 cal | 35g carbs | 20g proteína</p>
+                                </div>
+                            </div>
+                            <div class="meal-item">
+                                <div class="meal-time">19:00 - Cena</div>
+                                <div class="meal-content">
+                                    <strong>150g pescado + 100g quinoa + vegetales</strong>
+                                    <p>~550 cal | 50g carbs | 45g proteína</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>💧 Hidratación Diaria</h3>
+                        <div class="water-tracker" id="waterTracker">
+                            <div class="water-goal">Meta: 3L (12 vasos de 250ml)</div>
+                            <div class="water-glasses">
+                                <button class="water-glass" onclick="toggleWater(0)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(1)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(2)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(3)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(4)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(5)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(6)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(7)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(8)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(9)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(10)">💧</button>
+                                <button class="water-glass" onclick="toggleWater(11)">💧</button>
+                            </div>
+                            <div class="water-count"><span id="waterCount">0</span> / 12 vasos</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ANALISIS VIEW -->
+                <section id="view-analisis" class="view">
+                    <div class="section-header">
+                        <h2>📊 Análisis y Progreso</h2>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">KM Totales del Plan</div>
+                            <div class="stat-value" id="totalKmPlan">379 km</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">KM Completados</div>
+                            <div class="stat-value" id="totalKmDone">0 km</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="totalProgress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Adherencia General</div>
+                            <div class="stat-value" id="adherencia">0%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Racha Actual</div>
+                            <div class="stat-value"><span id="racha">0</span> días</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>🏃 Evolución KM Semanales</h3>
+                        <canvas id="kmEvolutionChart" width="400" height="200"></canvas>
+                    </div>
+
+                    <div class="card">
+                        <h3>📈 Tests y Competencias</h3>
+                        <div id="testsList" class="tests-list">
+                            <div class="test-empty">No hay tests registrados aún. ¡Registra tu test de 5K hoy!</div>
+                        </div>
+                        <button class="btn btn-secondary" onclick="showAddTest()">+ Registrar Test</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>🎯 Proyección a San Silvestre</h3>
+                        <div id="proyeccion" class="proyeccion-box">
+                            <p>Completa más entrenamientos y tests para ver tu proyección...</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>💾 Exportar Datos</h3>
+                        <div class="export-buttons">
+                            <button class="btn btn-primary" onclick="exportToJSON()">📥 Descargar JSON (Backup)</button>
+                            <button class="btn btn-secondary" onclick="exportToCSV()">📊 Descargar CSV (Excel)</button>
+                        </div>
+                        <div class="import-section">
+                            <label class="btn btn-outline">
+                                📤 Importar Backup
+                                <input type="file" id="importFile" accept=".json" onchange="importData()" style="display:none">
+                            </label>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="footer">
+            <div class="container">
+                <p>🏃 Plan Olímpico - Camino a JJ.OO. 2028/2032</p>
+                <p class="footer-quote">"Ganar o perder no importa. Lo importante es si puedes hacer que el resultado sea lo que quieres que sea." - Ayanokoji</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- MODALS -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
