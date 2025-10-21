@@ -1,12 +1,12 @@
 // Service Worker para funcionamiento offline (PWA)
 const CACHE_NAME = 'plan-olimpico-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/data.js',
-  '/manifest.json'
+  '/plan-olimpico/',
+  '/plan-olimpico/index.html',
+  '/plan-olimpico/styles.css',
+  '/plan-olimpico/app.js',
+  '/plan-olimpico/data.js',
+  '/plan-olimpico/manifest.json'
 ];
 
 // Instalación
