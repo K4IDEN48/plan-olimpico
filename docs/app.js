@@ -1,35 +1,23 @@
-// ===== INICIALIZACIÓN =====
+// ===== PLAN OLÍMPICO - APP COMPLETA CON IndexedDB =====
+
 let currentView = 'dashboard';
-let userData = {
-  monitoringData: [],
-  workoutResults: [],
-  testResults: [],
-  habits: {},
-  waterIntake: {},
-  weight: 65,
-  theme: 'light'
-};
 
-// Cargar datos al iniciar
-function loadUserData() {
-  try {
-    const saved = localStorage.getItem('planOlimpicoData');
-    if (saved) {
-      userData = JSON.parse(saved);
-    }
-    document.documentElement.setAttribute('data-theme', userData.theme || 'light');
-  } catch (error) {
-    console.error('Error cargando datos:', error);
+// ===== ESPERAR A QUE IndexedDB ESTÉ LISTA =====
+async function waitForDB() {
+  let attempts = 0;
+  while (!window.planDB && attempts < 50) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
   }
-}
-
-// Guardar datos
-function saveUserData() {
-  try {
-    localStorage.setItem('planOlimpicoData', JSON.stringify(userData));
-  } catch (error) {
-    console.error('Error guardando datos:', error);
+  
+  if (!window.planDB) {
+    console.error('❌ Base de datos no disponible');
+    alert('Error: Base de datos no disponible. Por favor recarga la página.');
+    return false;
   }
+  
+  console.log('✅ Base de datos lista');
+  return true;
 }
 
 // ===== NAVEGACIÓN =====
@@ -61,22 +49,22 @@ function switchView(viewName) {
   }
 }
 
-function loadViewContent(viewName) {
+async function loadViewContent(viewName) {
   switch(viewName) {
     case 'dashboard':
-      updateDashboard();
+      await updateDashboard();
       break;
     case 'entrenamientos':
-      loadWorkoutsCalendar();
+      await loadWorkoutsCalendar();
       break;
     case 'monitoreo':
-      loadMonitoringCharts();
+      await loadMonitoringCharts();
       break;
     case 'biblioteca':
       loadBiblioteca('calentamiento');
       break;
     case 'analisis':
-      loadAnalysisView();
+      await loadAnalysisView();
       break;
   }
 }
@@ -99,7 +87,7 @@ function updateCountdown() {
 }
 
 // ===== DASHBOARD =====
-function updateDashboard() {
+async function updateDashboard() {
   updateCountdown();
   setInterval(updateCountdown, 60000);
   
@@ -107,15 +95,15 @@ function updateDashboard() {
   document.getElementById('currentWeek').textContent = `${currentWeek.number} / 11`;
   document.getElementById('weekType').textContent = currentWeek.type;
   
-  const weekKm = calculateWeekKm(currentWeek);
+  const weekKm = await calculateWeekKm(currentWeek);
   document.getElementById('weekKm').textContent = `${weekKm.completed} / ${weekKm.total} km`;
   const weekPercent = (weekKm.completed / weekKm.total) * 100;
   document.getElementById('weekProgress').style.width = `${weekPercent}%`;
   
-  updateHealthStatus();
-  updateTodayWorkout();
-  loadTodayHabits();
-  drawWeeklyChart();
+  await updateHealthStatus();
+  await updateTodayWorkout();
+  await loadTodayHabits();
+  await drawWeeklyChart();
 }
 
 function getCurrentWeek() {
@@ -130,17 +118,25 @@ function getCurrentWeek() {
   return PLAN_DATA.weeks[0];
 }
 
-function calculateWeekKm(week) {
-  const completed = week.workouts
-    .filter(w => w.completed)
-    .reduce((sum, w) => sum + w.km, 0);
+async function calculateWeekKm(week) {
+  let completed = 0;
   
-  return { completed, total: week.totalKm };
+  for (const workout of week.workouts) {
+    const saved = await window.planDB.getWorkout(workout.date);
+    if (saved && saved.completed) {
+      completed += saved.realKm || workout.km;
+    }
+  }
+  
+  return { 
+    completed: Math.round(completed * 10) / 10, 
+    total: week.totalKm 
+  };
 }
 
-function updateHealthStatus() {
+async function updateHealthStatus() {
   const today = new Date().toISOString().split('T')[0];
-  const todayMonitoring = userData.monitoringData.find(m => m.date === today);
+  const todayMonitoring = await window.planDB.getMonitoring(today);
   
   if (!todayMonitoring) {
     document.getElementById('fcStatus').textContent = 'FC: -- lpm';
@@ -168,7 +164,7 @@ function updateHealthStatus() {
   healthCard.querySelector('.stat-value').textContent = statusText;
 }
 
-function updateTodayWorkout() {
+async function updateTodayWorkout() {
   const today = new Date().toISOString().split('T')[0];
   let todayWorkout = null;
   
@@ -183,6 +179,9 @@ function updateTodayWorkout() {
     container.innerHTML = '<p>No hay entrenamiento programado para hoy.</p>';
     return;
   }
+  
+  const saved = await window.planDB.getWorkout(today);
+  const isCompleted = saved && saved.completed;
   
   if (todayWorkout.type === 'Descanso') {
     container.innerHTML = `
@@ -202,42 +201,47 @@ function updateTodayWorkout() {
         <div class="workout-type">${todayWorkout.km}K ${todayWorkout.type}</div>
         <div class="workout-details">Ritmo: ${todayWorkout.pace}/km</div>
         <div class="workout-focus">${todayWorkout.details}</div>
+        ${isCompleted ? '<div style="color: var(--verde-exito); font-weight: 700; margin-top: 0.5rem;">✅ Completado</div>' : ''}
       </div>
-      <button class="btn btn-primary" onclick="startWorkout('${todayWorkout.date}')">Iniciar Entreno</button>
+      ${!isCompleted ? `<button class="btn btn-primary" onclick="startWorkout('${todayWorkout.date}')">Iniciar Entreno</button>` : ''}
     </div>
   `;
 }
 
-function loadTodayHabits() {
+async function loadTodayHabits() {
   const today = new Date().toISOString().split('T')[0];
-  const todayHabits = userData.habits[today] || {};
+  const todayHabits = await window.planDB.getHabits(today);
   
   const checkboxes = document.querySelectorAll('#habitsToday input[type="checkbox"]');
   checkboxes.forEach(cb => {
     const habit = cb.getAttribute('data-habit');
     cb.checked = todayHabits[habit] || false;
-    
-    cb.addEventListener('change', () => {
-      if (!userData.habits[today]) userData.habits[today] = {};
-      userData.habits[today][habit] = cb.checked;
-      saveUserData();
-      updateHabitScore();
+    cb.replaceWith(cb.cloneNode(true));
+  });
+  
+  document.querySelectorAll('#habitsToday input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const habit = cb.getAttribute('data-habit');
+      const currentHabits = await window.planDB.getHabits(today);
+      currentHabits[habit] = cb.checked;
+      await window.planDB.saveHabits(today, currentHabits);
+      await updateHabitScore();
     });
   });
   
-  updateHabitScore();
+  await updateHabitScore();
 }
 
-function updateHabitScore() {
+async function updateHabitScore() {
   const today = new Date().toISOString().split('T')[0];
-  const todayHabits = userData.habits[today] || {};
+  const todayHabits = await window.planDB.getHabits(today);
   const completed = Object.values(todayHabits).filter(v => v).length;
   const score = Math.round((completed / 8) * 100);
   document.getElementById('todayScore').textContent = `${score}%`;
 }
 
 // ===== ENTRENAMIENTOS =====
-function loadWorkoutsCalendar() {
+async function loadWorkoutsCalendar() {
   const container = document.getElementById('workoutsCalendar');
   const weekFilter = document.getElementById('weekFilter').value;
   
@@ -247,7 +251,7 @@ function loadWorkoutsCalendar() {
     ? PLAN_DATA.weeks 
     : PLAN_DATA.weeks.filter(w => w.number === parseInt(weekFilter));
   
-  weeksToShow.forEach(week => {
+  for (const week of weeksToShow) {
     const weekHeader = document.createElement('div');
     weekHeader.style.gridColumn = '1 / -1';
     weekHeader.innerHTML = `
@@ -260,9 +264,12 @@ function loadWorkoutsCalendar() {
     `;
     container.appendChild(weekHeader);
     
-    week.workouts.forEach(workout => {
+    for (const workout of week.workouts) {
+      const saved = await window.planDB.getWorkout(workout.date);
+      const isCompleted = saved && saved.completed;
+      
       const card = document.createElement('div');
-      card.className = `calendar-day ${workout.completed ? 'completed' : ''} ${workout.type === 'Descanso' ? 'rest' : ''}`;
+      card.className = `calendar-day ${isCompleted ? 'completed' : ''} ${workout.type === 'Descanso' ? 'rest' : ''}`;
       card.onclick = () => showWorkoutDetails(workout, week.number);
       
       card.innerHTML = `
@@ -273,17 +280,20 @@ function loadWorkoutsCalendar() {
         <div class="day-type">${workout.type}</div>
         <div class="day-distance">${workout.km > 0 ? workout.km + ' km' : ''}</div>
         ${workout.pace !== '-' ? `<div class="day-distance">${workout.pace}/km</div>` : ''}
-        ${workout.completed ? '<div style="text-align: center; font-size: 1.5rem; margin-top: 0.5rem;">✅</div>' : ''}
+        ${isCompleted ? '<div style="text-align: center; font-size: 1.5rem; margin-top: 0.5rem;">✅</div>' : ''}
       `;
       
       container.appendChild(card);
-    });
-  });
+    }
+  }
 }
 
-function showWorkoutDetails(workout, weekNumber) {
+async function showWorkoutDetails(workout, weekNumber) {
   const modal = document.getElementById('modal');
   const modalBody = document.getElementById('modalBody');
+  
+  const saved = await window.planDB.getWorkout(workout.date);
+  const isCompleted = saved && saved.completed;
   
   modalBody.innerHTML = `
     <h2>${workout.type} - ${workout.day}</h2>
@@ -298,9 +308,14 @@ function showWorkoutDetails(workout, weekNumber) {
     <h3>Detalles:</h3>
     <p>${workout.details}</p>
     
+    ${isCompleted && saved.notes ? `
+      <h3 style="margin-top: 1rem;">Notas:</h3>
+      <p>${saved.notes}</p>
+    ` : ''}
+    
     <div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-      ${!workout.completed ? `
-        <button class="btn btn-primary" onclick="markWorkoutComplete('${workout.date}')">
+      ${!isCompleted ? `
+        <button class="btn btn-primary" onclick="markWorkoutComplete('${workout.date}', ${weekNumber})">
           ✅ Marcar como Completado
         </button>
       ` : `
@@ -315,31 +330,53 @@ function showWorkoutDetails(workout, weekNumber) {
   modal.classList.add('active');
 }
 
-function markWorkoutComplete(date) {
-  for (let week of PLAN_DATA.weeks) {
-    const workout = week.workouts.find(w => w.date === date);
-    if (workout) {
-      workout.completed = true;
-      saveUserData();
-      closeModal();
-      loadWorkoutsCalendar();
-      updateDashboard();
-      return;
+async function markWorkoutComplete(date, weekNumber) {
+  try {
+    let workoutData = null;
+    
+    for (let week of PLAN_DATA.weeks) {
+      const workout = week.workouts.find(w => w.date === date);
+      if (workout) {
+        workoutData = workout;
+        break;
+      }
     }
+    
+    if (workoutData && window.planDB) {
+      await window.planDB.saveWorkout({
+        date: workoutData.date,
+        weekNumber: weekNumber,
+        type: workoutData.type,
+        km: workoutData.km,
+        pace: workoutData.pace,
+        completed: true,
+        realKm: workoutData.km,
+        details: workoutData.details
+      });
+      
+      closeModal();
+      await loadWorkoutsCalendar();
+      await updateDashboard();
+      alert('✅ Entrenamiento guardado');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('❌ Error guardando entrenamiento');
   }
 }
 
-function markWorkoutIncomplete(date) {
-  for (let week of PLAN_DATA.weeks) {
-    const workout = week.workouts.find(w => w.date === date);
-    if (workout) {
-      workout.completed = false;
-      saveUserData();
+async function markWorkoutIncomplete(date) {
+  try {
+    if (window.planDB) {
+      await window.planDB.markWorkoutIncomplete(date);
       closeModal();
-      loadWorkoutsCalendar();
-      updateDashboard();
-      return;
+      await loadWorkoutsCalendar();
+      await updateDashboard();
+      alert('✅ Entrenamiento desmarcado');
     }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('❌ Error desmarcando');
   }
 }
 
@@ -348,7 +385,7 @@ function setupMonitoringForm() {
   const form = document.getElementById('morningForm');
   if (!form) return;
   
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const today = new Date().toISOString().split('T')[0];
@@ -367,23 +404,18 @@ function setupMonitoringForm() {
       notas: document.getElementById('notasMonitoreo').value
     };
     
-    const existingIndex = userData.monitoringData.findIndex(m => m.date === today);
-    if (existingIndex >= 0) {
-      userData.monitoringData[existingIndex] = monitoringData;
-    } else {
-      userData.monitoringData.push(monitoringData);
+    if (window.planDB) {
+      await window.planDB.saveMonitoring(monitoringData);
+      alert('✅ Monitoreo guardado');
+      await loadMonitoringCharts();
+      await checkAlerts();
     }
-    
-    saveUserData();
-    alert('✅ Monitoreo guardado correctamente');
-    loadMonitoringCharts();
-    checkAlerts();
   });
 }
 
-function loadMonitoringCharts() {
+async function loadMonitoringCharts() {
   const today = new Date().toISOString().split('T')[0];
-  const todayData = userData.monitoringData.find(m => m.date === today);
+  const todayData = await window.planDB.getMonitoring(today);
   
   if (todayData) {
     document.getElementById('fcReposo').value = todayData.fcReposo;
@@ -395,16 +427,16 @@ function loadMonitoringCharts() {
     document.getElementById('notasMonitoreo').value = todayData.notas || '';
   }
   
-  drawMonitoringChart();
-  checkAlerts();
+  await drawMonitoringChart();
+  await checkAlerts();
 }
 
-function drawMonitoringChart() {
+async function drawMonitoringChart() {
   const canvas = document.getElementById('monitoringChart');
   if (!canvas) return;
   
   const ctx = canvas.getContext('2d');
-  const data = userData.monitoringData.slice(-7);
+  const data = await window.planDB.getRecentMonitoring(7);
   
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
@@ -412,20 +444,22 @@ function drawMonitoringChart() {
     ctx.fillStyle = '#6b7280';
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('No hay datos. Registra tu monitoreo matutino.', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('No hay datos. Registra tu monitoreo.', canvas.width / 2, canvas.height / 2);
     return;
   }
+  
+  const sortedData = data.sort((a, b) => new Date(a.date) - new Date(b.date));
   
   const padding = 40;
   const width = canvas.width - padding * 2;
   const height = canvas.height - padding * 2;
-  const stepX = width / (data.length - 1 || 1);
+  const stepX = width / (sortedData.length - 1 || 1);
   
   ctx.strokeStyle = '#003d82';
   ctx.lineWidth = 2;
   ctx.beginPath();
   
-  data.forEach((d, i) => {
+  sortedData.forEach((d, i) => {
     const x = padding + i * stepX;
     const y = padding + height - (d.fcReposo - 40) * (height / 30);
     
@@ -443,69 +477,51 @@ function drawMonitoringChart() {
   ctx.fillStyle = '#6b7280';
   ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  data.forEach((d, i) => {
+  sortedData.forEach((d, i) => {
     const x = padding + i * stepX;
     const dateLabel = d.date.split('-')[2] + '/' + d.date.split('-')[1];
-    ctx.fillText(dateLabel, x, canvas.height - 10);
+    ctx.fillText(dateLabel, x, canvas.height - padding + 20);
   });
 }
 
-function checkAlerts() {
+async function checkAlerts() {
   const alertsList = document.getElementById('alertsList');
   const today = new Date().toISOString().split('T')[0];
-  const todayData = userData.monitoringData.find(m => m.date === today);
+  const todayData = await window.planDB.getMonitoring(today);
   
   if (!todayData) {
-    alertsList.innerHTML = '<div class="alert-empty">No hay datos de hoy para evaluar.</div>';
+    alertsList.innerHTML = '<div class="alert-empty">No hay datos de hoy.</div>';
     return;
   }
   
   const alerts = [];
   
   if (todayData.fcReposo > 55) {
-    alerts.push({
-      type: 'warning',
-      message: `⚠️ FC en reposo elevada: ${todayData.fcReposo} lpm. Considera reducir intensidad.`
-    });
+    alerts.push({ type: 'warning', message: `⚠️ FC elevada: ${todayData.fcReposo} lpm` });
   }
   
   if (todayData.fcReposo > 60) {
-    alerts.push({
-      type: 'danger',
-      message: `🔴 FC muy alta: ${todayData.fcReposo} lpm. Posible sobreentrenamiento.`
-    });
+    alerts.push({ type: 'danger', message: `🔴 FC muy alta: ${todayData.fcReposo} lpm` });
   }
   
   if (todayData.horasSueno < 7) {
-    alerts.push({
-      type: 'warning',
-      message: `⚠️ Sueño insuficiente: ${todayData.horasSueno}h.`
-    });
+    alerts.push({ type: 'warning', message: `⚠️ Sueño insuficiente: ${todayData.horasSueno}h` });
   }
   
   if (todayData.nivelDolor > 5) {
-    alerts.push({
-      type: 'warning',
-      message: `⚠️ Nivel de dolor elevado: ${todayData.nivelDolor}/10.`
-    });
+    alerts.push({ type: 'warning', message: `⚠️ Dolor elevado: ${todayData.nivelDolor}/10` });
   }
   
   if (todayData.nivelDolor > 7) {
-    alerts.push({
-      type: 'danger',
-      message: `🔴 Dolor muy alto. NO entrenes hoy.`
-    });
+    alerts.push({ type: 'danger', message: `🔴 Dolor muy alto. NO entrenes` });
   }
   
   if (todayData.molestias.includes('aquiles') || todayData.molestias.includes('rodilla')) {
-    alerts.push({
-      type: 'danger',
-      message: `🔴 Molestia en zona crítica (Aquiles/Rodilla).`
-    });
+    alerts.push({ type: 'danger', message: `🔴 Molestia en zona crítica` });
   }
   
   if (alerts.length === 0) {
-    alertsList.innerHTML = '<div class="alert-empty">No hay alertas. ¡Todo en orden! 💚</div>';
+    alertsList.innerHTML = '<div class="alert-empty">¡Todo en orden! 💚</div>';
   } else {
     alertsList.innerHTML = alerts.map(alert => `
       <div class="alert-item ${alert.type}">${alert.message}</div>
@@ -526,7 +542,7 @@ function loadBiblioteca(category) {
   });
   
   if (exercises.length === 0) {
-    content.innerHTML = '<p>No hay ejercicios en esta categoría.</p>';
+    content.innerHTML = '<p>No hay ejercicios.</p>';
     return;
   }
   
@@ -546,8 +562,7 @@ function loadBiblioteca(category) {
 function setupBibliotecaTabs() {
   document.querySelectorAll('.btn-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      const tab = btn.getAttribute('data-tab');
-      loadBiblioteca(tab);
+      loadBiblioteca(btn.getAttribute('data-tab'));
     });
   });
 }
@@ -558,24 +573,18 @@ function showExerciseDetail(exercise) {
   
   modalBody.innerHTML = `
     <h2>${exercise.name}</h2>
-    <p style="color: var(--oro-olimpico); font-weight: 600; margin-bottom: 1rem;">
-      ⏱️ ${exercise.duration}
-    </p>
-    
+    <p style="color: var(--oro-olimpico); font-weight: 600; margin-bottom: 1rem;">⏱️ ${exercise.duration}</p>
     <div style="background: var(--gris-claro); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
       <strong>Músculos:</strong> ${exercise.muscles}
     </div>
-    
     <h3>Descripción:</h3>
     <p>${exercise.description}</p>
-    
     ${exercise.instructions ? `
       <h3>Instrucciones:</h3>
       <ol style="padding-left: 1.5rem;">
         ${exercise.instructions.map(inst => `<li style="margin-bottom: 0.5rem;">${inst}</li>`).join('')}
       </ol>
     ` : ''}
-    
     <button class="btn btn-outline" onclick="closeModal()" style="margin-top: 2rem;">Cerrar</button>
   `;
   
@@ -599,7 +608,7 @@ function calcularCalorias() {
   const grasas = Math.round(calorias * 0.20 / 9);
   
   document.getElementById('caloriaResult').innerHTML = `
-    <h3>Recomendación para hoy:</h3>
+    <h3>Recomendación:</h3>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;">
       <div style="text-align: center;">
         <div style="font-size: 2rem; font-weight: 700; color: var(--azul-olimpico);">${calorias}</div>
@@ -621,25 +630,24 @@ function calcularCalorias() {
   `;
 }
 
-function toggleWater(index) {
+async function toggleWater(index) {
   const today = new Date().toISOString().split('T')[0];
+  let todayWater = await window.planDB.getWater(today);
   
-  if (!userData.waterIntake[today]) userData.waterIntake[today] = [];
-  
-  const glassIndex = userData.waterIntake[today].indexOf(index);
+  const glassIndex = todayWater.indexOf(index);
   if (glassIndex >= 0) {
-    userData.waterIntake[today].splice(glassIndex, 1);
+    todayWater.splice(glassIndex, 1);
   } else {
-    userData.waterIntake[today].push(index);
+    todayWater.push(index);
   }
   
-  saveUserData();
-  updateWaterDisplay();
+  await window.planDB.saveWater(today, todayWater);
+  await updateWaterDisplay();
 }
 
-function updateWaterDisplay() {
+async function updateWaterDisplay() {
   const today = new Date().toISOString().split('T')[0];
-  const todayWater = userData.waterIntake[today] || [];
+  const todayWater = await window.planDB.getWater(today);
   
   document.querySelectorAll('.water-glass').forEach((glass, index) => {
     if (todayWater.includes(index)) {
@@ -653,30 +661,24 @@ function updateWaterDisplay() {
 }
 
 // ===== ANÁLISIS =====
-function loadAnalysisView() {
+async function loadAnalysisView() {
   const totalKm = PLAN_DATA.weeks.reduce((sum, week) => sum + week.totalKm, 0);
   document.getElementById('totalKmPlan').textContent = `${totalKm} km`;
   
-  let kmDone = 0;
-  PLAN_DATA.weeks.forEach(week => {
-    week.workouts.forEach(workout => {
-      if (workout.completed) kmDone += workout.km;
-    });
-  });
-  document.getElementById('totalKmDone').textContent = `${kmDone} km`;
+  const stats = await window.planDB.getStats();
+  document.getElementById('totalKmDone').textContent = `${stats.totalKm} km`;
   
-  const progress = (kmDone / totalKm) * 100;
+  const progress = (stats.totalKm / totalKm) * 100;
   document.getElementById('totalProgress').style.width = `${progress}%`;
   document.getElementById('adherencia').textContent = `${Math.round(progress)}%`;
   
-  document.getElementById('racha').textContent = calculateStreak();
+  document.getElementById('racha').textContent = await calculateStreak();
   
-  drawKmEvolutionChart();
-  loadTestsList();
-  calculateProyeccion();
+  await drawKmEvolutionChart();
+  await loadTestsList();
 }
 
-function calculateStreak() {
+async function calculateStreak() {
   const today = new Date();
   let streak = 0;
   
@@ -685,8 +687,8 @@ function calculateStreak() {
     checkDate.setDate(checkDate.getDate() - i);
     const dateStr = checkDate.toISOString().split('T')[0];
     
-    const dayHabits = userData.habits[dateStr];
-    if (!dayHabits) break;
+    const dayHabits = await window.planDB.getHabits(dateStr);
+    if (!dayHabits || Object.keys(dayHabits).length === 0) break;
     
     const completed = Object.values(dayHabits).filter(v => v).length;
     const score = (completed / 8) * 100;
@@ -698,16 +700,27 @@ function calculateStreak() {
   return streak;
 }
 
-function drawKmEvolutionChart() {
+async function drawKmEvolutionChart() {
   const canvas = document.getElementById('kmEvolutionChart');
   if (!canvas) return;
   
   const ctx = canvas.getContext('2d');
-  const weeklyData = PLAN_DATA.weeks.map(week => ({
-    week: week.number,
-    planned: week.totalKm,
-    completed: week.workouts.filter(w => w.completed).reduce((sum, w) => sum + w.km, 0)
-  }));
+  
+  const weeklyData = [];
+  for (const week of PLAN_DATA.weeks) {
+    let completed = 0;
+    for (const workout of week.workouts) {
+      const saved = await window.planDB.getWorkout(workout.date);
+      if (saved && saved.completed) {
+        completed += saved.realKm || workout.km;
+      }
+    }
+    weeklyData.push({
+      week: week.number,
+      planned: week.totalKm,
+      completed: Math.round(completed * 10) / 10
+    });
+  }
   
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
@@ -746,12 +759,12 @@ function drawKmEvolutionChart() {
   ctx.fillText('Completado', padding + 120, 22);
 }
 
-function loadTestsList() {
+async function loadTestsList() {
   const container = document.getElementById('testsList');
-  const tests = userData.testResults || [];
+  const tests = await window.planDB.getAllTests();
   
   if (tests.length === 0) {
-    container.innerHTML = '<div class="test-empty">No hay tests registrados. ¡Registra tu test de 5K!</div>';
+    container.innerHTML = '<div class="test-empty">No hay tests registrados.</div>';
     return;
   }
   
@@ -798,7 +811,7 @@ function showAddTest() {
   const modalBody = document.getElementById('modalBody');
   
   modalBody.innerHTML = `
-    <h2>Registrar Test/Competencia</h2>
+    <h2>Registrar Test</h2>
     <form id="testForm" class="form">
       <div class="form-group">
         <label>Fecha</label>
@@ -809,12 +822,10 @@ function showAddTest() {
         <select id="testDistance" class="select" required>
           <option value="5">5K</option>
           <option value="10">10K</option>
-          <option value="21">Medio Maratón</option>
-          <option value="42">Maratón</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Tiempo (MM:SS para 5K/10K)</label>
+        <label>Tiempo (MM:SS)</label>
         <input type="text" id="testTime" placeholder="20:05" required>
       </div>
       <div class="form-group">
@@ -825,7 +836,7 @@ function showAddTest() {
     </form>
   `;
   
-  document.getElementById('testForm').addEventListener('submit', (e) => {
+  document.getElementById('testForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const testData = {
@@ -835,96 +846,19 @@ function showAddTest() {
       notes: document.getElementById('testNotes').value
     };
     
-    if (!userData.testResults) userData.testResults = [];
-    
-    userData.testResults.push(testData);
-    userData.testResults.sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    saveUserData();
+    await window.planDB.saveTest(testData);
     closeModal();
-    loadTestsList();
-    calculateProyeccion();
-    alert('✅ Test registrado correctamente');
+    await loadTestsList();
+    alert('✅ Test registrado');
   });
   
   modal.classList.add('active');
 }
 
-function calculateProyeccion() {
-  const tests = userData.testResults || [];
-  const proyeccionBox = document.getElementById('proyeccion');
-  
-  if (tests.length < 2) {
-    proyeccionBox.innerHTML = '<p>Completa al menos 2 tests para ver tu proyección...</p>';
-    return;
-  }
-  
-  const test10k = tests.filter(t => t.distance === '10');
-  
-  if (test10k.length < 2) {
-    proyeccionBox.innerHTML = '<p>Necesitas al menos 2 tests de 10K para proyección precisa.</p>';
-    return;
-  }
-  
-  const firstTest = test10k[0];
-  const lastTest = test10k[test10k.length - 1];
-  
-  const toSeconds = (time) => {
-    const parts = time.split(':').map(Number);
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  };
-  
-  const firstSec = toSeconds(firstTest.time);
-  const lastSec = toSeconds(lastTest.time);
-  const improvement = firstSec - lastSec;
-  const targetSec = 38 * 60;
-  const currentGap = lastSec - targetSec;
-  
-  let message = '';
-  let color = '';
-  
-  if (currentGap <= 0) {
-    message = '🎉 ¡Ya superaste el objetivo de 38:00! Apunta más alto.';
-    color = 'var(--verde-exito)';
-  } else {
-    const gapMin = Math.floor(currentGap / 60);
-    const gapSec = currentGap % 60;
-    
-    if (improvement > 0) {
-      const weeksRemaining = PLAN_DATA.weeks.length - getCurrentWeek().number;
-      const projectedImprovement = (improvement / test10k.length) * weeksRemaining;
-      const projectedTime = lastSec - projectedImprovement;
-      
-      if (projectedTime <= targetSec) {
-        message = `📈 Proyección: ¡Alcanzarás el objetivo! Necesitas mejorar ${gapMin}:${gapSec.toString().padStart(2, '0')} más.`;
-        color = 'var(--verde-exito)';
-      } else {
-        message = `⚠️ Proyección: Acelera el ritmo de mejora. Te faltan ${gapMin}:${gapSec.toString().padStart(2, '0')}.`;
-        color = 'var(--amarillo-alerta)';
-      }
-    } else {
-      message = `🔴 Atención: No has mejorado entre tests. Te faltan ${gapMin}:${gapSec.toString().padStart(2, '0')}.`;
-      color = 'var(--rojo-peligro)';
-    }
-  }
-  
-  proyeccionBox.innerHTML = `
-    <div style="padding: 1.5rem; border-left: 4px solid ${color};">
-      <p style="font-size: 1.1rem; line-height: 1.8;">${message}</p>
-    </div>
-  `;
-}
-
 // ===== EXPORT/IMPORT =====
-function exportToJSON() {
-  const dataToExport = {
-    planData: PLAN_DATA,
-    userData: userData,
-    exportDate: new Date().toISOString()
-  };
-  
-  const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+async function exportToJSON() {
+  const data = await window.planDB.exportAllData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -933,15 +867,21 @@ function exportToJSON() {
   URL.revokeObjectURL(url);
 }
 
-function exportToCSV() {
-  let csv = 'Fecha,Tipo,Distancia,Ritmo,Completado,FC Reposo,Peso,Horas Sueño,Nivel Dolor\n';
+async function exportToCSV() {
+  let csv = 'Fecha,Tipo,Distancia,Ritmo,Completado,FC Reposo,Peso,Horas Sueño\n';
   
-  PLAN_DATA.weeks.forEach(week => {
-    week.workouts.forEach(workout => {
-      const monitoring = userData.monitoringData.find(m => m.date === workout.date) || {};
-      csv += `${workout.date},${workout.type},${workout.km},${workout.pace},${workout.completed ? 'Sí' : 'No'},${monitoring.fcReposo || ''},${monitoring.peso || ''},${monitoring.horasSueno || ''},${monitoring.nivelDolor || ''}\n`;
-    });
-  });
+  for (const week of PLAN_DATA.weeks) {
+    for (const workout of week.workouts) {
+      const saved = await window.planDB.getWorkout(workout.date);
+      const monitoring = await window.planDB.getMonitoring(workout.date);
+      
+      csv += `${workout.date},${workout.type},${workout.km},${workout.pace},`;
+      csv += `${saved && saved.completed ? 'Sí' : 'No'},`;
+      csv += `${monitoring ? monitoring.fcReposo : ''},`;
+      csv += `${monitoring ? monitoring.peso : ''},`;
+      csv += `${monitoring ? monitoring.horasSueno : ''}\n`;
+    }
+  }
   
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -952,23 +892,17 @@ function exportToCSV() {
   URL.revokeObjectURL(url);
 }
 
-function importData() {
+async function importData() {
   const file = document.getElementById('importFile').files[0];
   if (!file) return;
   
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const imported = JSON.parse(e.target.result);
-      
-      if (imported.userData) {
-        userData = imported.userData;
-        saveUserData();
-        alert('✅ Datos importados correctamente');
-        location.reload();
-      } else {
-        alert('❌ Archivo inválido');
-      }
+      await window.planDB.importAllData(imported);
+      alert('✅ Datos importados');
+      location.reload();
     } catch (error) {
       alert('❌ Error al importar: ' + error.message);
     }
@@ -992,7 +926,7 @@ function startWorkout(date) {
   modalBody.innerHTML = `
     <h2>🏃 Iniciar Entreno</h2>
     <h3>${workout.type} - ${workout.km}K</h3>
-    <p style="color: var(--text-secondary); margin-bottom: 2rem;">Ritmo objetivo: ${workout.pace}/km</p>
+    <p style="color: var(--text-secondary); margin-bottom: 2rem;">Ritmo: ${workout.pace}/km</p>
     
     <div style="background: var(--gris-claro); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
       <h4>Protocolo Pre-Entreno:</h4>
@@ -1000,13 +934,13 @@ function startWorkout(date) {
         <li>✅ Hidratación (250ml agua)</li>
         <li>✅ Calentamiento dinámico (10 min)</li>
         <li>✅ Drills de técnica</li>
-        <li>✅ Mentalización del entreno</li>
+        <li>✅ Mentalización</li>
       </ol>
     </div>
     
     <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
       <button class="btn btn-primary" onclick="confirmStartWorkout('${date}')">
-        ⏱️ Confirmar y Empezar
+        ⏱️ Confirmar
       </button>
       <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
     </div>
@@ -1015,28 +949,48 @@ function startWorkout(date) {
   modal.classList.add('active');
 }
 
-function confirmStartWorkout(date) {
-  alert('🏃 ¡Entreno iniciado! Dale con todo.');
+async function confirmStartWorkout(date) {
+  alert('🏃 ¡Entreno iniciado! Registra cuando termines.');
   closeModal();
-  markWorkoutComplete(date);
+  
+  // Buscar datos del workout
+  let workout = null;
+  let weekNumber = 1;
+  
+  for (let week of PLAN_DATA.weeks) {
+    workout = week.workouts.find(w => w.date === date);
+    if (workout) {
+      weekNumber = week.number;
+      break;
+    }
+  }
+  
+  if (workout) {
+    await markWorkoutComplete(date, weekNumber);
+  }
 }
 
 function showAddWorkout() {
-  alert('Función en desarrollo: Agregar entreno personalizado');
+  alert('Función en desarrollo');
 }
 
 // ===== WEEKLY CHART =====
-function drawWeeklyChart() {
+async function drawWeeklyChart() {
   const canvas = document.getElementById('weeklyChart');
   if (!canvas) return;
   
   const ctx = canvas.getContext('2d');
   const currentWeek = getCurrentWeek();
-  const weekData = currentWeek.workouts.map(w => ({
-    day: w.day.substring(0, 3),
-    km: w.km,
-    completed: w.completed
-  }));
+  
+  const weekData = [];
+  for (const workout of currentWeek.workouts) {
+    const saved = await window.planDB.getWorkout(workout.date);
+    weekData.push({
+      day: workout.day.substring(0, 3),
+      km: workout.km,
+      completed: saved && saved.completed
+    });
+  }
   
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
@@ -1078,16 +1032,20 @@ function setupModal() {
 }
 
 // ===== THEME TOGGLE =====
-function setupThemeToggle() {
+async function setupThemeToggle() {
   const themeToggle = document.getElementById('themeToggle');
   if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
+    const savedTheme = await window.planDB.getConfig('theme');
+    if (savedTheme) {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+    
+    themeToggle.addEventListener('click', async () => {
       const currentTheme = document.documentElement.getAttribute('data-theme');
       const newTheme = currentTheme === 'light' ? 'dark' : 'light';
       
       document.documentElement.setAttribute('data-theme', newTheme);
-      userData.theme = newTheme;
-      saveUserData();
+      await window.planDB.saveConfig('theme', newTheme);
     });
   }
 }
@@ -1120,16 +1078,17 @@ function setupWeekFilter() {
 }
 
 // ===== INICIALIZACIÓN PRINCIPAL =====
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log('🏃 Iniciando Plan Olímpico...');
   
-  // Cargar datos del usuario
-  loadUserData();
+  // Esperar a que IndexedDB esté lista
+  const dbReady = await waitForDB();
+  if (!dbReady) return;
   
   // Inicializar componentes
   initNavigation();
   setupModal();
-  setupThemeToggle();
+  await setupThemeToggle();
   setupMenuToggle();
   setupExportButton();
   setupWeekFilter();
@@ -1137,8 +1096,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupBibliotecaTabs();
   
   // Cargar vista inicial
-  updateDashboard();
-  updateWaterDisplay();
+  await updateDashboard();
+  await updateWaterDisplay();
   
   console.log('✅ Plan Olímpico iniciado correctamente');
   console.log('🏃 Camino a San Silvestre 31/12/2025');
